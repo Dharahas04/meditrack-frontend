@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../services/api';
 
@@ -9,12 +9,19 @@ function Register() {
         password: '',
         role: 'DOCTOR',
         phone: '',
+        departmentId: '',
+        shift: 'MORNING',
     });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
+    const [departments, setDepartments] = useState([]);
 
     const navigate = useNavigate();
+
+    useEffect(() => {
+        API.get('/departments').then(res => setDepartments(res.data));
+    }, []);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -26,11 +33,14 @@ function Register() {
         setError('');
 
         try {
-            await API.post('/auth/register', formData);
+            await API.post('/auth/register', {
+                ...formData,
+                departmentId: Number(formData.departmentId),
+            });
             setSuccess('Registered successfully! Redirecting to login...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {
-            setError('Registration failed! Try again.');
+            setError(err.response?.data || 'Registration failed! Try again.');
         } finally {
             setLoading(false);
         }
@@ -44,12 +54,13 @@ function Register() {
                 <h1 style={styles.logo}>🏥 MediTrack AI</h1>
                 <p style={styles.subtitle}>Create your account</p>
 
-                {/* Error */}
+                {/* Error & Success */}
                 {error && <p style={styles.error}>{error}</p>}
                 {success && <p style={styles.success}>{success}</p>}
 
                 {/* Form */}
                 <form onSubmit={handleRegister}>
+
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>Full Name</label>
                         <input
@@ -99,6 +110,36 @@ function Register() {
                             <option value="DOCTOR">Doctor</option>
                             <option value="NURSE">Nurse</option>
                             <option value="ADMIN">Admin</option>
+                        </select>
+                    </div>
+
+                    <div style={styles.inputGroup}>
+                        <label style={styles.label}>Department</label>
+                        <select
+                            style={styles.input}
+                            name="departmentId"
+                            value={formData.departmentId}
+                            onChange={handleChange}
+                            required>
+                            <option value="">Select Department</option>
+                            {departments.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                    {d.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div style={styles.inputGroup}>
+                        <label style={styles.label}>Shift</label>
+                        <select
+                            style={styles.input}
+                            name="shift"
+                            value={formData.shift}
+                            onChange={handleChange}>
+                            <option value="MORNING">Morning</option>
+                            <option value="AFTERNOON">Afternoon</option>
+                            <option value="NIGHT">Night</option>
                         </select>
                     </div>
 
