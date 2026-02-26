@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import API from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,78 +8,74 @@ function Attendance() {
     const [message, setMessage] = useState('');
     const { user } = useAuth();
 
+    const isAdmin = user?.role === 'ADMIN';
+    const canMark = ['DOCTOR', 'NURSE', 'LAB_TECHNICIAN'].includes(user?.role);
+
+    const fetchAttendance = useCallback(() => {
+        setLoading(true);
+
+        const endpoint =
+            isAdmin ? '/attendance/report' : `/attendance/report?userId=${user?.id}`;
+
+        API.get(endpoint)
+            .then((res) => setAttendance(res.data))
+            .catch((err) => console.log(err))
+            .finally(() => setLoading(false));
+    }, [isAdmin, user?.id]);
+
     useEffect(() => {
         fetchAttendance();
-    }, []);
-
-    const fetchAttendance = () => {
-        API.get('/attendance')
-            .then(res => {
-                setAttendance(res.data);
-                setLoading(false);
-            })
-            .catch(err => console.log(err));
-    };
+    }, [fetchAttendance]);
 
     const handleCheckIn = async () => {
+        if (!canMark || !user?.id) return;
         try {
             await API.post(`/attendance/checkin/${user.id}`);
-            setMessage('✅ Checked in successfully!');
+            setMessage('Checked in successfully');
             fetchAttendance();
         } catch (err) {
-            setMessage('❌ Already checked in today!');
+            setMessage(err?.response?.data || 'Unable to check in');
         }
     };
 
     const handleCheckOut = async () => {
+        if (!canMark || !user?.id) return;
         try {
             await API.put(`/attendance/checkout/${user.id}`);
-            setMessage('✅ Checked out successfully!');
+            setMessage('Checked out successfully');
             fetchAttendance();
         } catch (err) {
-            setMessage('❌ No check-in found for today!');
+            setMessage(err?.response?.data || 'Unable to check out');
         }
     };
 
-    const todayAttendance = attendance.filter(
-        a => a.date === new Date().toISOString().split('T')[0]
-    );
+    const today = new Date().toISOString().split('T')[0];
+    const todayAttendance = attendance.filter((a) => a.date === today);
 
-    const present = attendance.filter(
-        a => a.status === 'PRESENT'
-    ).length;
-    const absent = attendance.filter(
-        a => a.status === 'ABSENT'
-    ).length;
-    const late = attendance.filter(
-        a => a.status === 'LATE'
-    ).length;
+    const present = attendance.filter((a) => a.status === 'PRESENT').length;
+    const absent = attendance.filter((a) => a.status === 'ABSENT').length;
+    const late = attendance.filter((a) => a.status === 'LATE').length;
+    const halfDay = attendance.filter((a) => a.status === 'HALF_DAY').length;
 
     return (
         <div>
-            <h1 style={styles.heading}>📋 Attendance</h1>
+            <h1 style={styles.heading}>Attendance</h1>
 
-            {/* Check In/Out Buttons */}
-            <div style={styles.actionCard}>
-                <h3 style={styles.actionTitle}>Mark Your Attendance</h3>
-                <div style={styles.actionButtons}>
-                    <button
-                        style={styles.checkInBtn}
-                        onClick={handleCheckIn}>
-                        ✅ Check In
-                    </button>
-                    <button
-                        style={styles.checkOutBtn}
-                        onClick={handleCheckOut}>
-                        🚪 Check Out
-                    </button>
+            {canMark && (
+                <div style={styles.actionCard}>
+                    <h3 style={styles.actionTitle}>Mark Attendance</h3>
+                    <div style={styles.actionButtons}>
+                        <button style={styles.checkInBtn} onClick={handleCheckIn}>
+                            Check In
+                        </button>
+                        <button style={styles.checkOutBtn} onClick={handleCheckOut}>
+                            Check Out
+                        </button>
+                    </div>
+                    {message && <p style={styles.message}>{message}</p>}
                 </div>
-                {message && (
-                    <p style={styles.message}>{message}</p>
-                )}
-            </div>
+            )}
 
-            {/* Summary Cards */}
             <div style={styles.summaryGrid}>
                 <div style={styles.summaryCard}>
                     <h2 style={{ color: '#276749' }}>{present}</h2>
@@ -94,14 +90,15 @@ function Attendance() {
                     <p style={{ color: '#744210' }}>Late</p>
                 </div>
                 <div style={styles.summaryCard}>
-                    <h2 style={{ color: '#2b6cb0' }}>
-                        {todayAttendance.length}
-                    </h2>
+                    <h2 style={{ color: '#553c9a' }}>{halfDay}</h2>
+                    <p style={{ color: '#553c9a' }}>Half Day</p>
+                </div>
+                <div style={styles.summaryCard}>
+                    <h2 style={{ color: '#2b6cb0' }}>{todayAttendance.length}</h2>
                     <p style={{ color: '#2b6cb0' }}>Today</p>
                 </div>
             </div>
 
-            {/* Attendance Table */}
             {loading ? (
                 <p>Loading attendance...</p>
             ) : (
@@ -126,28 +123,22 @@ function Attendance() {
                             ) : (
                                 attendance.map((a) => (
                                     <tr key={a.id} style={styles.tableRow}>
+                                        <td style={styles.td}>{a.user?.name}</td>
+                                        <td style={styles.td}>{a.date}</td>
+                                        <td style={styles.td}>{a.checkIn || '-'}</td>
+                                        <td style={styles.td}>{a.checkOut || '-'}</td>
                                         <td style={styles.td}>
-                                            {a.user?.name}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.date}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.checkIn || '-'}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.checkOut || '-'}
-                                        </td>
-                                        <td style={styles.td}>
-                                            <span style={
-                                                a.status === 'PRESENT'
-                                                    ? styles.present
-                                                    : a.status === 'ABSENT'
-                                                        ? styles.absent
-                                                        : a.status === 'LATE'
-                                                            ? styles.late
-                                                            : styles.halfday
-                                            }>
+                                            <span
+                                                style={
+                                                    a.status === 'PRESENT'
+                                                        ? styles.present
+                                                        : a.status === 'ABSENT'
+                                                            ? styles.absent
+                                                            : a.status === 'LATE'
+                                                                ? styles.late
+                                                                : styles.halfday
+                                                }
+                                            >
                                                 {a.status}
                                             </span>
                                         </td>
@@ -171,14 +162,8 @@ const styles = {
         boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
         marginBottom: '20px',
     },
-    actionTitle: {
-        color: '#2d3748',
-        marginBottom: '15px',
-    },
-    actionButtons: {
-        display: 'flex',
-        gap: '15px',
-    },
+    actionTitle: { color: '#2d3748', marginBottom: '15px' },
+    actionButtons: { display: 'flex', gap: '15px' },
     checkInBtn: {
         backgroundColor: '#38a169',
         color: 'white',
@@ -197,14 +182,10 @@ const styles = {
         cursor: 'pointer',
         fontSize: '14px',
     },
-    message: {
-        marginTop: '10px',
-        color: '#2b6cb0',
-        fontWeight: 'bold',
-    },
+    message: { marginTop: '10px', color: '#2b6cb0', fontWeight: 'bold' },
     summaryGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
+        gridTemplateColumns: 'repeat(5, 1fr)',
         gap: '15px',
         marginBottom: '20px',
     },
@@ -231,16 +212,8 @@ const styles = {
         fontSize: '13px',
     },
     tableRow: { borderBottom: '1px solid #e2e8f0' },
-    td: {
-        padding: '12px',
-        fontSize: '13px',
-        color: '#4a5568',
-    },
-    noData: {
-        padding: '20px',
-        textAlign: 'center',
-        color: '#718096',
-    },
+    td: { padding: '12px', fontSize: '13px', color: '#4a5568' },
+    noData: { padding: '20px', textAlign: 'center', color: '#718096' },
     present: {
         backgroundColor: '#c6f6d5',
         color: '#276749',

@@ -18,49 +18,103 @@ function Register() {
     const [departments, setDepartments] = useState([]);
 
     const navigate = useNavigate();
+    const shiftRoles = ['DOCTOR', 'NURSE', 'RECEPTIONIST'];
 
     useEffect(() => {
-        API.get('/departments').then(res => setDepartments(res.data));
+        const fetchDepartments = async () => {
+            try {
+                const res = await API.get('/departments');
+                setDepartments(res.data || []);
+            } catch {
+                setDepartments([]);
+            }
+        };
+        fetchDepartments();
     }, []);
 
     const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+
+        if (name === 'role') {
+            const requiresShiftForRole = shiftRoles.includes(value);
+            setFormData((prev) => ({
+                ...prev,
+                role: value,
+                departmentId: value === 'DOCTOR' ? prev.departmentId : '',
+                shift: requiresShiftForRole ? (prev.shift || 'MORNING') : '',
+            }));
+            return;
+        }
+
+        setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleRegister = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setSuccess('');
+
+        const isDoctor = formData.role === 'DOCTOR';
+        const requiresShift = shiftRoles.includes(formData.role);
+
+        const supportDept = departments.find(
+            (d) => (d.name || '').trim().toUpperCase() === 'GENERAL_SUPPORT'
+        );
+
+        if (isDoctor && !formData.departmentId) {
+            setError('Please select department for doctor');
+            setLoading(false);
+            return;
+        }
+
+        if (!isDoctor && !supportDept?.id) {
+            setError('GENERAL_SUPPORT department missing in database');
+            setLoading(false);
+            return;
+        }
+
+        if (requiresShift && !formData.shift) {
+            setError('Please select shift');
+            setLoading(false);
+            return;
+        }
+
+        const payload = {
+            ...formData,
+            departmentId: isDoctor
+                ? Number(formData.departmentId)
+                : Number(supportDept.id),
+            shift: requiresShift ? formData.shift : null,
+        };
 
         try {
-            await API.post('/auth/register', {
-                ...formData,
-                departmentId: Number(formData.departmentId),
-            });
+            await API.post('/auth/register', payload);
             setSuccess('Registered successfully! Redirecting to login...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {
-            setError(err.response?.data || 'Registration failed! Try again.');
+            const backendMsg =
+                err.response?.data?.message ||
+                (typeof err.response?.data === 'string' ? err.response.data : '');
+            setError(backendMsg || 'Registration failed! Try again.');
         } finally {
             setLoading(false);
         }
     };
 
+    const showDoctorDepartment = formData.role === 'DOCTOR';
+    const showShift = shiftRoles.includes(formData.role);
+
     return (
         <div style={styles.container}>
             <div style={styles.card}>
-
-                {/* Logo */}
                 <h1 style={styles.logo}>🏥 MediTrack AI</h1>
                 <p style={styles.subtitle}>Create your account</p>
 
-                {/* Error & Success */}
                 {error && <p style={styles.error}>{error}</p>}
                 {success && <p style={styles.success}>{success}</p>}
 
-                {/* Form */}
                 <form onSubmit={handleRegister}>
-
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>Full Name</label>
                         <input
@@ -106,42 +160,55 @@ function Register() {
                             style={styles.input}
                             name="role"
                             value={formData.role}
-                            onChange={handleChange}>
+                            onChange={handleChange}
+                        >
                             <option value="DOCTOR">Doctor</option>
                             <option value="NURSE">Nurse</option>
                             <option value="ADMIN">Admin</option>
+                            <option value="RECEPTIONIST">Receptionist</option>
                         </select>
                     </div>
 
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>Department</label>
-                        <select
-                            style={styles.input}
-                            name="departmentId"
-                            value={formData.departmentId}
-                            onChange={handleChange}
-                            required>
-                            <option value="">Select Department</option>
-                            {departments.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                    {d.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {showDoctorDepartment && (
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>Department</label>
+                            <select
+                                style={styles.input}
+                                name="departmentId"
+                                value={formData.departmentId}
+                                onChange={handleChange}
+                                required
+                            >
+                                <option value="">Select Department</option>
+                                {departments.map((d) => (
+                                    <option key={d.id} value={d.id}>
+                                        {d.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
-                    <div style={styles.inputGroup}>
-                        <label style={styles.label}>Shift</label>
-                        <select
-                            style={styles.input}
-                            name="shift"
-                            value={formData.shift}
-                            onChange={handleChange}>
-                            <option value="MORNING">Morning</option>
-                            <option value="AFTERNOON">Afternoon</option>
-                            <option value="NIGHT">Night</option>
-                        </select>
-                    </div>
+                    {!showDoctorDepartment && (
+                        <p style={styles.note}>Department: GENERAL_SUPPORT (auto-assigned)</p>
+                    )}
+
+                    {showShift && (
+                        <div style={styles.inputGroup}>
+                            <label style={styles.label}>Shift</label>
+                            <select
+                                style={styles.input}
+                                name="shift"
+                                value={formData.shift}
+                                onChange={handleChange}
+                                required
+                            >
+                                <option value="MORNING">Morning</option>
+                                <option value="AFTERNOON">Afternoon</option>
+                                <option value="NIGHT">Night</option>
+                            </select>
+                        </div>
+                    )}
 
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>Phone</label>
@@ -159,17 +226,15 @@ function Register() {
                     <button
                         style={loading ? styles.buttonDisabled : styles.button}
                         type="submit"
-                        disabled={loading}>
+                        disabled={loading}
+                    >
                         {loading ? 'Registering...' : 'Register'}
                     </button>
                 </form>
 
-                {/* Login link */}
                 <p style={styles.loginLink}>
                     Already have an account?{' '}
-                    <span
-                        style={styles.link}
-                        onClick={() => navigate('/login')}>
+                    <span style={styles.link} onClick={() => navigate('/login')}>
                         Login here
                     </span>
                 </p>
@@ -220,6 +285,14 @@ const styles = {
         fontSize: '14px',
         boxSizing: 'border-box',
     },
+    note: {
+        marginBottom: '15px',
+        color: '#4a5568',
+        fontSize: '13px',
+        backgroundColor: '#edf2f7',
+        padding: '8px 10px',
+        borderRadius: '6px',
+    },
     button: {
         width: '100%',
         padding: '12px',
@@ -262,7 +335,7 @@ const styles = {
         color: '#2b6cb0',
         cursor: 'pointer',
         fontWeight: 'bold',
-    }
+    },
 };
 
 export default Register;

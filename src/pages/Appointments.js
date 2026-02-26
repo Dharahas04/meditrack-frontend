@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import API from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 function Appointments() {
     const [appointments, setAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [doctors, setDoctors] = useState([]);
+    const [error, setError] = useState('');
     const [formData, setFormData] = useState({
         patientId: '',
         doctorId: '',
@@ -14,30 +16,42 @@ function Appointments() {
         reason: '',
     });
 
+    const { user } = useAuth();
+
+    const canBook = user?.role === 'ADMIN' || user?.role === 'RECEPTIONIST';
+    const canUpdateStatus =
+        user?.role === 'ADMIN' || user?.role === 'RECEPTIONIST' || user?.role === 'DOCTOR';
+
+    const fetchAppointments = useCallback(() => {
+        setLoading(true);
+
+        if (user?.role === 'DOCTOR' && user?.id) {
+            API.get(`/appointments/doctor/${user.id}`)
+                .then((res) => {
+                    setAppointments(res.data || []);
+                })
+                .catch((err) => console.log(err))
+                .finally(() => setLoading(false));
+        } else {
+            API.get('/appointments')
+                .then((res) => {
+                    setAppointments(res.data || []);
+                })
+                .catch((err) => console.log(err))
+                .finally(() => setLoading(false));
+        }
+    }, [user?.role, user?.id]);
+
+    const fetchDoctors = useCallback(() => {
+        API.get('/users?role=DOCTOR')
+            .then((res) => setDoctors(res.data || []))
+            .catch((err) => console.log(err));
+    }, []);
+
     useEffect(() => {
         fetchAppointments();
         fetchDoctors();
-    }, []);
-
-    const fetchAppointments = () => {
-        API.get('/appointments')
-            .then(res => {
-                setAppointments(res.data);
-                setLoading(false);
-            })
-            .catch(err => console.log(err));
-    };
-
-    const fetchDoctors = () => {
-        API.get('/users')
-            .then(res => {
-                const doctorList = res.data.filter(
-                    u => u.role === 'DOCTOR'
-                );
-                setDoctors(doctorList);
-            })
-            .catch(err => console.log(err));
-    };
+    }, [fetchAppointments, fetchDoctors]);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -45,20 +59,46 @@ function Appointments() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!canBook) return;
+
+        setError('');
+
+        const patientId = Number(formData.patientId);
+        const doctorId = Number(formData.doctorId);
+
+        if (!patientId || !doctorId) {
+            setError('Please enter valid patient and doctor');
+            return;
+        }
+
         try {
             await API.post('/appointments', {
-                ...formData,
-                patientId: Number(formData.patientId),
-                doctorId: Number(formData.doctorId),
+                patient: { id: patientId },
+                doctor: { id: doctorId },
+                appointmentDate: formData.appointmentDate,
+                appointmentTime: formData.appointmentTime,
+                reason: formData.reason?.trim() || null,
             });
+
             setShowForm(false);
+            setFormData({
+                patientId: '',
+                doctorId: '',
+                appointmentDate: '',
+                appointmentTime: '',
+                reason: '',
+            });
             fetchAppointments();
         } catch (err) {
-            console.log(err);
+            const msg =
+                err.response?.data?.message ||
+                (typeof err.response?.data === 'string' ? err.response.data : 'Booking failed');
+            setError(msg);
         }
     };
 
     const handleStatusChange = async (id, status) => {
+        if (!canUpdateStatus) return;
         try {
             await API.put(`/appointments/${id}/status?status=${status}`);
             fetchAppointments();
@@ -70,18 +110,22 @@ function Appointments() {
     return (
         <div>
             <div style={styles.header}>
-                <h1 style={styles.heading}>📅 Appointments</h1>
-                <button
-                    style={styles.addBtn}
-                    onClick={() => setShowForm(!showForm)}>
-                    {showForm ? 'Cancel' : '+ Book Appointment'}
-                </button>
+                <h1 style={styles.heading}>Appointments</h1>
+
+                {canBook ? (
+                    <button style={styles.addBtn} onClick={() => setShowForm(!showForm)}>
+                        {showForm ? 'Cancel' : '+ Book Appointment'}
+                    </button>
+                ) : (
+                    <p style={styles.infoText}>View only</p>
+                )}
             </div>
 
-            {/* Book Appointment Form */}
-            {showForm && (
+            {canBook && showForm && (
                 <div style={styles.formCard}>
                     <h3>Book New Appointment</h3>
+                    {error && <p style={styles.error}>{error}</p>}
+
                     <form onSubmit={handleSubmit}>
                         <div style={styles.formGrid}>
                             <div style={styles.inputGroup}>
@@ -104,11 +148,12 @@ function Appointments() {
                                     name="doctorId"
                                     value={formData.doctorId}
                                     onChange={handleChange}
-                                    required>
+                                    required
+                                >
                                     <option value="">Select Doctor</option>
                                     {doctors.map((d) => (
                                         <option key={d.id} value={d.id}>
-                                            {d.name} - {d.department?.name}
+                                            {d.name} {d.department ? `- ${d.department.name || d.department}` : ''}
                                         </option>
                                     ))}
                                 </select>
@@ -158,7 +203,6 @@ function Appointments() {
                 </div>
             )}
 
-            {/* Appointments Table */}
             {loading ? (
                 <p>Loading appointments...</p>
             ) : (
@@ -185,57 +229,41 @@ function Appointments() {
                             ) : (
                                 appointments.map((a) => (
                                     <tr key={a.id} style={styles.tableRow}>
+                                        <td style={styles.td}>{a.patient?.name}</td>
+                                        <td style={styles.td}>{a.doctor?.name}</td>
+                                        <td style={styles.td}>{a.appointmentDate}</td>
+                                        <td style={styles.td}>{a.appointmentTime}</td>
+                                        <td style={styles.td}>{a.reason}</td>
                                         <td style={styles.td}>
-                                            {a.patient?.name}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.doctor?.name}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.appointmentDate}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.appointmentTime}
-                                        </td>
-                                        <td style={styles.td}>
-                                            {a.reason}
-                                        </td>
-                                        <td style={styles.td}>
-                                            <span style={
-                                                a.status === 'SCHEDULED'
-                                                    ? styles.scheduled
-                                                    : a.status === 'COMPLETED'
-                                                        ? styles.completed
-                                                        : a.status === 'NO_SHOW'
-                                                            ? styles.noshow
-                                                            : styles.cancelled
-                                            }>
+                                            <span
+                                                style={
+                                                    a.status === 'SCHEDULED'
+                                                        ? styles.scheduled
+                                                        : a.status === 'COMPLETED'
+                                                            ? styles.completed
+                                                            : a.status === 'NO_SHOW'
+                                                                ? styles.noshow
+                                                                : styles.cancelled
+                                                }
+                                            >
                                                 {a.status}
                                             </span>
                                         </td>
                                         <td style={styles.td}>
-                                            <select
-                                                style={styles.select}
-                                                value={a.status}
-                                                onChange={(e) =>
-                                                    handleStatusChange(
-                                                        a.id,
-                                                        e.target.value
-                                                    )
-                                                }>
-                                                <option value="SCHEDULED">
-                                                    Scheduled
-                                                </option>
-                                                <option value="COMPLETED">
-                                                    Completed
-                                                </option>
-                                                <option value="CANCELLED">
-                                                    Cancelled
-                                                </option>
-                                                <option value="NO_SHOW">
-                                                    No Show
-                                                </option>
-                                            </select>
+                                            {canUpdateStatus ? (
+                                                <select
+                                                    style={styles.select}
+                                                    value={a.status}
+                                                    onChange={(e) => handleStatusChange(a.id, e.target.value)}
+                                                >
+                                                    <option value="SCHEDULED">Scheduled</option>
+                                                    <option value="COMPLETED">Completed</option>
+                                                    <option value="CANCELLED">Cancelled</option>
+                                                    <option value="NO_SHOW">No Show</option>
+                                                </select>
+                                            ) : (
+                                                <span style={styles.readOnly}>View Only</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
@@ -256,6 +284,13 @@ const styles = {
         marginBottom: '20px',
     },
     heading: { color: '#2b6cb0' },
+    infoText: {
+        color: '#4a5568',
+        fontSize: '13px',
+        backgroundColor: '#edf2f7',
+        padding: '8px 10px',
+        borderRadius: '6px',
+    },
     addBtn: {
         backgroundColor: '#2b6cb0',
         color: 'white',
@@ -271,6 +306,11 @@ const styles = {
         borderRadius: '12px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
         marginBottom: '20px',
+    },
+    error: {
+        color: '#c53030',
+        marginBottom: '12px',
+        fontSize: '13px',
     },
     formGrid: {
         display: 'grid',
@@ -362,6 +402,10 @@ const styles = {
         border: '1px solid #cbd5e0',
         fontSize: '12px',
         cursor: 'pointer',
+    },
+    readOnly: {
+        color: '#718096',
+        fontSize: '12px',
     },
 };
 

@@ -1,16 +1,58 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Patients from './Patients';
 import Beds from './Beds';
 import Appointments from './Appointments';
 import Alerts from './Alerts';
 import Attendance from './Attendance';
+import Prescriptions from './Prescriptions';
+
+const MENU_BY_ROLE = {
+    ADMIN: ['home', 'patients', 'beds', 'appointments', 'attendance', 'alerts'],
+    RECEPTIONIST: ['home', 'patients', 'appointments', 'beds'],
+    DOCTOR: ['home', 'patients', 'appointments', 'attendance', 'prescriptions'],
+    NURSE: ['home', 'patients', 'beds', 'attendance'],
+    LAB_TECHNICIAN: ['home', 'attendance'],
+};
+
+const LABELS = {
+    home: '🏠 Home',
+    patients: '🧑‍⚕️ Patients',
+    beds: '🛏️ Beds',
+    appointments: '📅 Appointments',
+    attendance: '📋 Attendance',
+    alerts: '🔔 Alerts',
+    prescriptions: '💊 Prescriptions',
+};
+
+const DESCRIPTIONS = {
+    patients: 'Patient registration / clinical workflow',
+    beds: 'Bed occupancy and ward status',
+    appointments: 'Appointment operations',
+    attendance: 'Shift attendance tracking',
+    alerts: 'Critical system alerts',
+    prescriptions: 'Medication orders and prescriptions',
+};
 
 function Dashboard() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [activePage, setActivePage] = useState('home');
+    const [prescriptionContext, setPrescriptionContext] = useState(null);
+
+    const role = user?.role || '';
+    const visibleMenu = useMemo(() => MENU_BY_ROLE[role] || ['home'], [role]);
+
+    useEffect(() => {
+        if (!visibleMenu.includes(activePage)) {
+            setActivePage('home');
+        }
+    }, [activePage, visibleMenu]);
+
+    useEffect(() => {
+        if (!user) navigate('/login');
+    }, [user, navigate]);
 
     const handleLogout = () => {
         logout();
@@ -19,19 +61,34 @@ function Dashboard() {
 
     const renderPage = () => {
         switch (activePage) {
-            case 'patients': return <Patients />;
-            case 'beds': return <Beds />;
-            case 'appointments': return <Appointments />;
-            case 'alerts': return <Alerts />;
-            case 'attendance': return <Attendance />;
-            default: return <Home user={user} />;
+            case 'patients':
+                return (
+                    <Patients
+                        onNavigate={(page, payload) => {
+                            setActivePage(page);
+                            if (page === 'prescriptions') {
+                                setPrescriptionContext(payload || null);
+                            }
+                        }}
+                    />
+                );
+            case 'beds':
+                return <Beds />;
+            case 'appointments':
+                return <Appointments />;
+            case 'alerts':
+                return <Alerts />;
+            case 'prescriptions':
+                return <Prescriptions presetPatient={prescriptionContext} />;
+            case 'attendance':
+                return <Attendance />;
+            default:
+                return <Home user={user} visibleMenu={visibleMenu} onOpen={setActivePage} />;
         }
     };
 
     return (
         <div style={styles.container}>
-
-            {/* Sidebar */}
             <div style={styles.sidebar}>
                 <h2 style={styles.logo}>🏥 MediTrack</h2>
                 <p style={styles.userInfo}>{user?.name}</p>
@@ -39,90 +96,41 @@ function Dashboard() {
 
                 <hr style={styles.divider} />
 
-                <button style={activePage === 'home' ?
-                    styles.activeMenu : styles.menu}
-                    onClick={() => setActivePage('home')}>
-                    🏠 Home
-                </button>
-
-                <button style={activePage === 'patients' ?
-                    styles.activeMenu : styles.menu}
-                    onClick={() => setActivePage('patients')}>
-                    🧑‍⚕️ Patients
-                </button>
-
-                <button style={activePage === 'beds' ?
-                    styles.activeMenu : styles.menu}
-                    onClick={() => setActivePage('beds')}>
-                    🛏️ Beds
-                </button>
-
-                <button style={activePage === 'appointments' ?
-                    styles.activeMenu : styles.menu}
-                    onClick={() => setActivePage('appointments')}>
-                    📅 Appointments
-                </button>
-
-                <button style={activePage === 'attendance' ?
-                    styles.activeMenu : styles.menu}
-                    onClick={() => setActivePage('attendance')}>
-                    📋 Attendance
-                </button>
-
-                {user?.role === 'ADMIN' && (
-                    <button style={activePage === 'alerts' ?
-                        styles.activeMenu : styles.menu}
-                        onClick={() => setActivePage('alerts')}>
-                        🔔 Alerts
+                {visibleMenu.map((key) => (
+                    <button
+                        key={key}
+                        style={activePage === key ? styles.activeMenu : styles.menu}
+                        onClick={() => setActivePage(key)}
+                    >
+                        {LABELS[key]}
                     </button>
-                )}
+                ))}
 
-                <button style={styles.logoutBtn}
-                    onClick={handleLogout}>
+                <button style={styles.logoutBtn} onClick={handleLogout}>
                     🚪 Logout
                 </button>
             </div>
 
-            {/* Main Content */}
-            <div style={styles.main}>
-                {renderPage()}
-            </div>
+            <div style={styles.main}>{renderPage()}</div>
         </div>
     );
 }
 
-// Home component
-function Home({ user }) {
+function Home({ user, visibleMenu, onOpen }) {
+    const cards = visibleMenu.filter((k) => k !== 'home');
+
     return (
         <div>
-            <h1 style={styles.heading}>
-                Welcome, {user?.name}! 👋
-            </h1>
-            <p style={styles.subheading}>
-                Role: {user?.role}
-            </p>
+            <h1 style={styles.heading}>Welcome, {user?.name}!</h1>
+            <p style={styles.subheading}>Role: {user?.role}</p>
 
             <div style={styles.cardGrid}>
-                <div style={styles.card}>
-                    <h2>🧑‍⚕️ Patients</h2>
-                    <p>Manage admitted patients</p>
-                </div>
-                <div style={styles.card}>
-                    <h2>🛏️ Beds</h2>
-                    <p>Check bed availability</p>
-                </div>
-                <div style={styles.card}>
-                    <h2>📅 Appointments</h2>
-                    <p>View and book appointments</p>
-                </div>
-                <div style={styles.card}>
-                    <h2>📋 Attendance</h2>
-                    <p>Mark and view attendance</p>
-                </div>
-                <div style={styles.card}>
-                    <h2>🔔 Alerts</h2>
-                    <p>AI generated alerts</p>
-                </div>
+                {cards.map((key) => (
+                    <div key={key} style={styles.card} onClick={() => onOpen(key)}>
+                        <h2>{LABELS[key]}</h2>
+                        <p>{DESCRIPTIONS[key]}</p>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -145,13 +153,11 @@ const styles = {
     logo: {
         fontSize: '18px',
         marginBottom: '5px',
-        color: 'white',
     },
     userInfo: {
         fontSize: '14px',
         fontWeight: 'bold',
-        margin: '0',
-        color: 'white',
+        margin: 0,
     },
     userRole: {
         fontSize: '12px',

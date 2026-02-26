@@ -23,10 +23,11 @@ function Login() {
                 password
             });
 
-            const { token, name, role } = response.data;
+            const { token, id, name, email: serverEmail, role } = response.data;
 
-            login({ name, email, role }, token);
+            login({ id, name, email: serverEmail, role }, token);
             navigate('/dashboard');
+
 
         } catch (err) {
             setError('Invalid email or password!');
