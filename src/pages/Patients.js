@@ -116,9 +116,9 @@ function Patients({ onNavigate }) {
         try {
             await API.post('/patient-requests', {
                 ...requestForm,
-                requestedByDoctorId: user?.id,
                 age: requestForm.age ? Number(requestForm.age) : null,
             });
+
             setShowRequestForm(false);
             setRequestForm({
                 patientName: '',
@@ -139,9 +139,9 @@ function Patients({ onNavigate }) {
         const remarks = window.prompt('Approval remarks (optional):') || '';
         try {
             await API.put(`/patient-requests/${id}/approve`, {
-                processedByUserId: user?.id,
                 remarks,
             });
+
 
             fetchPendingRequests();
             fetchPatients();   // 🔥 ADD THIS LINE
@@ -156,9 +156,9 @@ function Patients({ onNavigate }) {
         if (!remarks.trim()) return;
         try {
             await API.put(`/patient-requests/${id}/reject`, {
-                processedByUserId: user?.id,
                 remarks,
             });
+
             fetchPendingRequests();
         } catch (err) {
             console.log(err);
@@ -167,9 +167,9 @@ function Patients({ onNavigate }) {
 
     const handleMarkRegistered = async (id) => {
         try {
-            await API.put(`/patient-requests/${id}/registered?processedByUserId=${user?.id}`);
+            await API.put(`/patient-requests/${id}/registered`);
             fetchPendingRequests();
-            fetchPatients();   // 🔥 ADD THIS
+            fetchPatients();   // 🔥 ADD THIS LINE
         } catch (err) {
             console.log(err);
         }

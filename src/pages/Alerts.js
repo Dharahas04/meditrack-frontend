@@ -5,6 +5,8 @@ function Alerts() {
     const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [error, setError] = useState('');
+
     const [formData, setFormData] = useState({
         type: 'STAFF_SHORTAGE',
         message: '',
@@ -16,13 +18,17 @@ function Alerts() {
     }, []);
 
     const fetchAlerts = () => {
+        setLoading(true);
+        setError('');
         API.get('/alerts')
-            .then(res => {
-                setAlerts(res.data);
-                setLoading(false);
+            .then((res) => setAlerts(res.data || []))
+            .catch(() => {
+                setAlerts([]);
+                setError('Failed to load alerts');
             })
-            .catch(err => console.log(err));
+            .finally(() => setLoading(false));
     };
+
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -50,6 +56,8 @@ function Alerts() {
 
     return (
         <div>
+            {error && <p style={{ color: '#c53030', marginBottom: '12px' }}>{error}</p>}
+
             <div style={styles.header}>
                 <h1 style={styles.heading}>🔔 Alerts</h1>
                 <button
@@ -58,6 +66,7 @@ function Alerts() {
                     {showForm ? 'Cancel' : '+ Create Alert'}
                 </button>
             </div>
+
 
             {/* Create Alert Form */}
             {showForm && (
@@ -135,9 +144,9 @@ function Alerts() {
                             <div key={a.id} style={{
                                 ...styles.alertCard,
                                 borderLeft: `4px solid ${a.severity === 'CRITICAL' ? '#e53e3e'
-                                        : a.severity === 'HIGH' ? '#dd6b20'
-                                            : a.severity === 'MEDIUM' ? '#d69e2e'
-                                                : '#38a169'
+                                    : a.severity === 'HIGH' ? '#dd6b20'
+                                        : a.severity === 'MEDIUM' ? '#d69e2e'
+                                            : '#38a169'
                                     }`
                             }}>
                                 <div style={styles.alertHeader}>

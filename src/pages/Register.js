@@ -164,8 +164,9 @@ function Register() {
                         >
                             <option value="DOCTOR">Doctor</option>
                             <option value="NURSE">Nurse</option>
-                            <option value="ADMIN">Admin</option>
                             <option value="RECEPTIONIST">Receptionist</option>
+                            <option value="LAB_TECHNICIAN">Lab Technician</option>
+
                         </select>
                     </div>
 
